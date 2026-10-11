@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account details for platform admins and employers",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The unique Firebase Auth UID of the user"
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user"
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the user"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "employer"],
+          "description": "The role of the user on the platform"
+        },
+        "businessName": {
+          "type": "string",
+          "description": "The name of the business (required for employers)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user account was created"
+        }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Worker": {
+      "title": "Worker",
+      "description": "Worker digital profile for receiving tips",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique worker page ID"
+        },
+        "employerId": {
+          "type": "string",
+          "description": "The UID of the employer who onboarded this worker"
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the worker"
+        },
+        "email": {
+          "type": "string",
+          "description": "The worker's email address (optional)"
+        },
+        "position": {
+          "type": "string",
+          "description": "The job position of the worker, e.g. Waiter, Barista"
+        },
+        "bankName": {
+          "type": "string",
+          "description": "Merchant settlement bank name"
+        },
+        "bankCode": {
+          "type": "string",
+          "description": "The bank code for Paystack payouts"
+        },
+        "accountNumber": {
+          "type": "string",
+          "description": "The worker's bank account number"
+        },
+        "accountName": {
+          "type": "string",
+          "description": "Verified bank account name of the worker"
+        },
+        "subaccountCode": {
+          "type": "string",
+          "description": "Paystack generated subaccount code for splitting tips"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the worker profile was created"
+        }
+      },
+      "required": ["id", "employerId", "name", "position", "bankName", "bankCode", "accountNumber", "accountName", "subaccountCode", "createdAt"]
+    },
+    "Tip": {
+      "title": "Tip",
+      "description": "Tip transaction details with automated split data",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The Paystack transaction reference or unique transaction ID"
+        },
+        "workerId": {
+          "type": "string",
+          "description": "The ID of the tipped worker"
+        },
+        "workerName": {
+          "type": "string",
+          "description": "Captured name of the worker at physical transaction moment"
+        },
+        "employerId": {
+          "type": "string",
+          "description": "The ID of the employer who onboarded the worker"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Total tip amount entered by customer in local currency NGN"
+        },
+        "feeAmount": {
+          "type": "number",
+          "description": "Percentage-based platform fee (2% of amount)"
+        },
+        "workerAmount": {
+          "type": "number",
+          "description": "Net payout to the worker (98% of amount)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "success", "failed"],
+          "description": "The payment settlement status"
+        },
+        "reference": {
+          "type": "string",
+          "description": "The Paystack online transaction reference"
+        },
+        "customerEmail": {
+          "type": "string",
+          "description": "Email address of tipping customer"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Optional name of tipping customer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the transaction was created/processed"
+        }
+      },
+      "required": ["id", "workerId", "workerName", "employerId", "amount", "feeAmount", "workerAmount", "status", "reference", "customerEmail", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Root collection storing platforms admins and registered business employers"
+    },
+    "workers": {
+      "schema": "Worker",
+      "description": "Root collection storing public profiles of staff eligible to receive tips via QR scan"
+    },
+    "tips": {
+      "schema": "Tip",
+      "description": "Root collection tracking transaction ledger and split payout percentages"
+    }
+  }
+}

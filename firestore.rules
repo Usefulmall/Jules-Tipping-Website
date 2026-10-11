@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Catch-All Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isPlatformAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'exellentoak@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- SCHEMAS VALIDATION HELPERS ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
+             data.keys().size() <= 8 &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role in ['admin', 'employer'] &&
+             (data.role != 'admin' || request.auth.token.email == 'exellentoak@gmail.com') &&
+             (!data.keys().hasAll(['businessName']) || (data.businessName is string && data.businessName.size() <= 100));
+    }
+
+    function isValidWorker(data) {
+      return data.keys().hasAll(['id', 'employerId', 'name', 'position', 'bankName', 'bankCode', 'accountNumber', 'accountName', 'subaccountCode', 'createdAt']) &&
+             data.keys().size() <= 15 &&
+             data.id is string && data.id.size() <= 64 &&
+             data.employerId is string && data.employerId.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.position is string && data.position.size() <= 100 &&
+             data.bankName is string && data.bankName.size() <= 100 &&
+             data.bankCode is string && data.bankCode.size() <= 20 &&
+             data.accountNumber is string && data.accountNumber.size() <= 20 &&
+             data.accountName is string && data.accountName.size() <= 100 &&
+             data.subaccountCode is string && data.subaccountCode.size() <= 64 &&
+             data.createdAt is string &&
+             (!data.keys().hasAll(['email']) || (data.email is string && data.email.size() <= 100)) &&
+             (!data.keys().hasAll(['idNumber']) || (data.idNumber is string && data.idNumber.size() <= 50)) &&
+             (!data.keys().hasAll(['cellNumber']) || (data.cellNumber is string && data.cellNumber.size() <= 30)) &&
+             (!data.keys().hasAll(['employerName']) || (data.employerName is string && data.employerName.size() <= 100));
+    }
+
+    function isValidTip(data) {
+      return data.keys().hasAll(['id', 'workerId', 'workerName', 'employerId', 'amount', 'feeAmount', 'workerAmount', 'status', 'reference', 'customerEmail', 'createdAt']) &&
+             data.keys().size() <= 12 &&
+             data.id is string && data.id.size() <= 64 &&
+             data.workerId is string && data.workerId.size() <= 64 &&
+             data.workerName is string && data.workerName.size() <= 100 &&
+             data.employerId is string && data.employerId.size() <= 128 &&
+             data.amount is number && data.amount > 0 &&
+             data.feeAmount is number &&
+             data.workerAmount is number &&
+             data.status in ['pending', 'success', 'failed'] &&
+             data.reference is string && data.reference.size() <= 100 &&
+             data.customerEmail is string && data.customerEmail.size() <= 128 &&
+             (!data.keys().hasAll(['customerName']) || (data.customerName is string && data.customerName.size() <= 100));
+    }
+
+    // --- RULES FOR COLLECTIONS ---
+
+    // 1. Users
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isPlatformAdmin());
+      allow list: if isPlatformAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isPlatformAdmin()) && 
+                    isValidUser(incoming()) && 
+                    incoming().role == existing().role && 
+                    incoming().email == existing().email && 
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'businessName']);
+      allow delete: if isPlatformAdmin();
+    }
+
+    // 2. Workers
+    match /workers/{workerId} {
+      allow get: if true; // Public view for tipping page scanned by QR code
+      allow list: if isSignedIn() && (isPlatformAdmin() || (resource.data.employerId == request.auth.uid));
+      allow create: if isValidWorker(incoming());
+      allow update: if (isPlatformAdmin() || (isSignedIn() && existing().employerId == request.auth.uid && incoming().employerId == request.auth.uid)) &&
+                    isValidWorker(incoming()) &&
+                    incoming().id == existing().id &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasAny(['name', 'position', 'bankName', 'bankCode', 'accountNumber', 'accountName', 'subaccountCode', 'email', 'idNumber', 'cellNumber', 'employerName']);
+      allow delete: if isPlatformAdmin() || (isSignedIn() && existing().employerId == request.auth.uid);
+    }
+
+    // 3. Tips
+    match /tips/{tipId} {
+      allow get: if true; // Publicly readable for transaction confirmation receipts
+      allow list: if isSignedIn() && (isPlatformAdmin() || resource.data.employerId == request.auth.uid);
+      allow create: if isValidTip(incoming()) && 
+                     incoming().status == 'pending' && 
+                     incoming().createdAt == request.time;
+      allow update: if existing().status == 'pending' &&
+                    isValidTip(incoming()) &&
+                    incoming().id == existing().id &&
+                    incoming().workerId == existing().workerId &&
+                    incoming().amount == existing().amount &&
+                    incoming().feeAmount == existing().feeAmount &&
+                    incoming().workerAmount == existing().workerAmount &&
+                    incoming().employerId == existing().employerId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reference']);
+      allow delete: if isPlatformAdmin(); // Only global admin can purge ledger entries in theory, never standard clients
+    }
+  }
+}

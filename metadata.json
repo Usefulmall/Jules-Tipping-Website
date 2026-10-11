@@ -1,0 +1,6 @@
+{
+  "name": "Tipping Platform",
+  "description": "Secure digital tipping platform allowing employers to onboard workers, generate public tip profiles with QR codes, and automate percentage-based split transaction payouts with Paystack.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
